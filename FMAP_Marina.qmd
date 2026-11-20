@@ -1,0 +1,504 @@
+---
+title: "FMAP_Marina"
+format: html
+editor: visual
+---
+
+# FMAP Time Series Analysis
+
+## 1. Data Import and Preparation
+
+```{r}
+
+
+# Load packages
+library(fpp3)
+library(readr)
+library(dplyr)
+library(ggplot2)
+
+# Import dataset
+fmap <- read_csv("FMAP_Marina.csv")
+
+# Inspect data
+glimpse(fmap)
+summary(fmap)
+
+
+```
+
+```{r}
+
+# Create monthly tsibble
+fmap_ts <- fmap |>
+  mutate(Date = yearmonth(Date)) |>
+  as_tsibble(
+    key = c(EFPG_name, Metroregion_name),
+    index = Date
+  )
+
+# Inspect tsibble
+fmap_ts
+
+# Check missing observations
+count_gaps(fmap_ts)
+
+
+# Check missing values across the entire dataset
+fmap_ts |>
+  as_tibble() |>
+  summarise(
+    total_observations = n(),
+    missing_prices = sum(is.na(Price_index_GEKS))
+  )
+
+
+# Check for duplicate keys
+duplicates <- fmap |>
+  count(EFPG_name, Metroregion_name, Date) |>
+  filter(n > 1)
+
+duplicates
+
+# Check number of observations per subseries
+fmap_ts |>
+  count(EFPG_name, Metroregion_name)
+
+```
+
+## 2. Exploratory Data Analysis
+
+```{r}
+#| fig-width: 11
+#| fig-height: 8
+#| dpi: 150
+
+# Shorten region labels for plotting
+fmap_plot <- fmap_ts |>
+  mutate(
+    Region = sub("Census Region [1-4]: ", "",
+                 Metroregion_name)
+  )
+
+# Plot first five food categories
+fmap_plot |>
+  filter(EFPG_name %in% sort(unique(EFPG_name))[1:5]) |>
+  ggplot(aes(
+    x = Date,
+    y = Price_index_GEKS,
+    color = Region
+  )) +
+  geom_line(linewidth = 0.65) +
+  facet_wrap(
+    ~ EFPG_name,
+    ncol = 2,
+    labeller = label_wrap_gen(28)
+  ) +
+  labs(
+    title = "Monthly Food Price Indexes, 2012–2018",
+    subtitle = "First five assigned food categories",
+    x = "Year",
+    y = "GEKS Price Index",
+    color = "Region"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+
+```
+
+```{r}
+#| fig-width: 11
+#| fig-height: 8
+#| dpi: 150
+# Shorten region labels for plotting
+fmap_plot <- fmap_ts |>
+  mutate(
+    Region = sub("Census Region [1-4]: ", "",
+                 Metroregion_name)
+  )
+
+# Plot second five food categories
+fmap_plot |>
+  filter(EFPG_name %in% sort(unique(EFPG_name))[6:10]) |>
+  ggplot(aes(
+    x = Date,
+    y = Price_index_GEKS,
+    color = Region
+  )) +
+  geom_line(linewidth = 0.65) +
+  facet_wrap(
+    ~ EFPG_name,
+    ncol = 2,
+    labeller = label_wrap_gen(28)
+  ) +
+  labs(
+    title = "Monthly Food Price Indexes, 2012–2018",
+    subtitle = "Second five assigned food categories",
+    x = "Year",
+    y = "GEKS Price Index",
+    color = "Region"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  )
+
+```
+
+```{r}
+
+# Compare regions for one food category
+fmap_ts |>
+  filter(EFPG_name == "Baked goods") |>
+  autoplot(Price_index_GEKS) +
+  labs(
+    title = "Baked Goods Price Index by Region",
+    x = "Year",
+    y = "Price Index",
+    color = "Region"
+  ) +
+  theme_minimal()
+
+```
+
+```{r}
+
+```
+
+## 3. Training and Testing Split
+
+```{r}
+
+# Split into training and testing sets
+train <- fmap_ts |>
+  filter(year(Date) <= 2017)
+
+test <- fmap_ts |>
+  filter(year(Date) == 2018)
+
+# Verify observations
+train |>
+  count(EFPG_name, Metroregion_name)
+
+test |>
+  count(EFPG_name, Metroregion_name)
+
+```
+
+## 4. Seasonal Strength Analysis
+
+```{r}
+# Calculate seasonal strength 
+#| label: seasonal-strength
+#| message: false
+#| warning: false
+
+# Calculate seasonal strength using training data
+seasonal_strength <- train |>
+  features(Price_index_GEKS, feat_stl)
+
+# Display seasonal strength results
+seasonal_strength |>
+  select(
+    EFPG_name,
+    Metroregion_name,
+    seasonal_strength_year
+  ) |>
+  arrange(desc(seasonal_strength_year)) |>
+  print(n = Inf)
+```
+
+```{r}
+# Visualize seasonal strength 
+#| label: seasonal-strength-heatmap
+#| fig-width: 11
+#| fig-height: 7
+#| dpi: 150
+#| message: false
+#| warning: false
+
+seasonal_strength |>
+  mutate(
+    Region = sub(
+      "Census Region [1-4]: ",
+      "",
+      Metroregion_name
+    ),
+    Category = stringr::str_wrap(EFPG_name, 35)
+  ) |>
+  ggplot(aes(
+    x = Region,
+    y = Category,
+    fill = seasonal_strength_year
+  )) +
+  geom_tile(
+    color = "white",
+    linewidth = 0.8
+  ) +
+  geom_text(
+    aes(label = sprintf("%.2f", seasonal_strength_year)),
+    size = 3
+  ) +
+  scale_fill_gradient(
+    low = "white",
+    high = "steelblue4",
+    limits = c(0, 1)
+  ) +
+  labs(
+    title = "Seasonal Strength by Food Category and Region",
+    subtitle = "STL decomposition of monthly GEKS price indexes, 2012–2017",
+    x = "Region",
+    y = NULL,
+    fill = "Seasonal\nStrength"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.y = element_text(size = 10),
+    axis.text.x = element_text(size = 11),
+    plot.title = element_text(face = "bold")
+  )
+
+
+
+```
+
+```{r}
+#| label: seasonal-strength-summary
+#| message: false
+#| warning: false
+
+seasonal_strength |>
+  group_by(EFPG_name) |>
+  summarise(
+    mean_seasonal_strength = mean(
+      seasonal_strength_year,
+      na.rm = TRUE
+    ),
+    min_seasonal_strength = min(
+      seasonal_strength_year,
+      na.rm = TRUE
+    ),
+    max_seasonal_strength = max(
+      seasonal_strength_year,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  ) |>
+  arrange(desc(mean_seasonal_strength)) |>
+  print(n = Inf)
+
+
+```
+
+```{r}
+# Export seasonal strength results 
+#| label: export-seasonal-strength
+#| message: false
+#| warning: false
+
+seasonal_strength |>
+  select(
+    EFPG_name,
+    Metroregion_name,
+    seasonal_strength_year
+  ) |>
+  rename(
+    category = EFPG_name,
+    region = Metroregion_name,
+    seasonal_strength = seasonal_strength_year
+  ) |>
+  write_csv("FMAP_Marina_Seasonality.csv")
+```
+
+## 
+
+## 5. Forecasting Models
+
+### 5.1 Fit SNAIVE, ETS, and ARIMA Models
+
+```{r}
+# Fit forecasting models
+fits <- train |>
+  model(
+    SNAIVE = SNAIVE(Price_index_GEKS),
+    ETS = ETS(Price_index_GEKS),
+    ARIMA = ARIMA(Price_index_GEKS)
+  )
+
+# Display fitted models
+fits
+
+```
+
+### 5.2 Forecast 2018
+
+```{r}
+
+# Generate 12-month forecasts
+forecasts <- fits |>
+  forecast(h = "12 months")
+
+# Inspect forecasts
+forecasts
+
+```
+
+### 5.3 Visualize Forecasts
+
+```{r}
+
+# Plot forecasts for one subseries
+forecasts |>
+  filter(
+    EFPG_name == "Baked goods",
+    Metroregion_name == "Census Region 4: West"
+  ) |>
+  autoplot(
+    fmap_ts |>
+      filter(
+        EFPG_name == "Baked goods",
+        Metroregion_name == "Census Region 4: West",
+        year(Date) >= 2016
+      ),
+    level = NULL
+  ) +
+  labs(
+    title = "Baked Goods in Western Region: 2018 Forecast Comparison",
+    x = "Year",
+    y = "Price Index"
+  ) +
+  theme_minimal()
+
+```
+
+## 6. Model Evaluation
+
+```{r}
+
+# Evaluate forecasts against 2018 actual values
+accuracy_results <- forecasts |>
+  accuracy(
+    test,
+    measures = list(
+      RMSE = RMSE,
+      MAE = MAE,
+      MAPE = MAPE
+    )
+  )
+
+# View accuracy results
+accuracy_results
+
+```
+
+### Export Results
+
+```{r}
+
+accuracy_export <- accuracy_results |>
+  transmute(
+    category = EFPG_name,
+    region = Metroregion_name,
+    model = .model,
+    RMSE,
+    MAE,
+    MAPE
+  )
+
+# Inspect results
+print(accuracy_export, n = 20)
+
+# Export CSV
+write_csv(
+  accuracy_export,
+  "FMAP_Marina_Accuracy.csv"
+)
+
+```
+
+### Compare Average Model Performance
+
+```{r}
+
+accuracy_export |>
+  group_by(model) |>
+  summarise(
+    mean_RMSE = mean(RMSE, na.rm = TRUE),
+    mean_MAE = mean(MAE, na.rm = TRUE),
+    mean_MAPE = mean(MAPE, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  arrange(mean_RMSE)
+
+```
+
+```{r}
+
+best_models <- accuracy_export |>
+  group_by(category, region) |>
+  slice_min(RMSE, n = 1, with_ties = FALSE) |>
+  ungroup()
+
+# Count how often each model performs best
+best_models |>
+  count(model, name = "number_of_wins")
+
+# View the best model for each subseries
+best_models
+
+```
+
+```{r}
+
+accuracy_export |>
+  group_by(model) |>
+  summarise(
+    mean_RMSE = mean(RMSE),
+    .groups = "drop"
+  ) |>
+  ggplot(aes(
+    x = reorder(model, mean_RMSE),
+    y = mean_RMSE
+  )) +
+  geom_col(fill = "steelblue4", width = 0.6) +
+  geom_text(
+    aes(label = sprintf("%.4f", mean_RMSE)),
+    hjust = -0.15,
+    size = 4
+  ) +
+  coord_flip(ylim = c(0, 0.022)) +
+  labs(
+    title = "Average Forecast Error by Model",
+    subtitle = "2018 test period across 40 subseries",
+    x = NULL,
+    y = "Mean RMSE (index units)"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.grid.major.y = element_blank()
+  )
+
+```
+
+```{r}
+
+accuracy_export |>
+  group_by(category, model) |>
+  summarise(
+    mean_RMSE = mean(RMSE),
+    .groups = "drop"
+  ) |>
+  arrange(category, mean_RMSE) |>
+  print(n = Inf)
+
+```
+
+## 7. Summary of Findings

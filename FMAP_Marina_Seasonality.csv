@@ -1,0 +1,41 @@
+category,region,seasonal_strength
+All other breakfast cereal,Census Region 1: Northeast,0.5536333405034641
+All other breakfast cereal,Census Region 2: Midwest,0.3705121934280734
+All other breakfast cereal,Census Region 3: South,0.5830499734009794
+All other breakfast cereal,Census Region 4: West,0.46817788745198274
+All other desserts,Census Region 1: Northeast,0.9629568709864479
+All other desserts,Census Region 2: Midwest,0.8382673774087958
+All other desserts,Census Region 3: South,0.8752158990202885
+All other desserts,Census Region 4: West,0.8995799475440456
+Baked goods,Census Region 1: Northeast,0.5975975332390248
+Baked goods,Census Region 2: Midwest,0.527844492076891
+Baked goods,Census Region 3: South,0.5151466930956862
+Baked goods,Census Region 4: West,0.3538676656664492
+Non-whole-grain breads,Census Region 1: Northeast,0.31184388423208553
+Non-whole-grain breads,Census Region 2: Midwest,0.29775641097634387
+Non-whole-grain breads,Census Region 3: South,0.3652037180397475
+Non-whole-grain breads,Census Region 4: West,0.14851841409546285
+"Non-whole-grain flour, bread mixes, and frozen dough",Census Region 1: Northeast,0.8853941577939803
+"Non-whole-grain flour, bread mixes, and frozen dough",Census Region 2: Midwest,0.8895713494903009
+"Non-whole-grain flour, bread mixes, and frozen dough",Census Region 3: South,0.8888957867058299
+"Non-whole-grain flour, bread mixes, and frozen dough",Census Region 4: West,0.8886547681907164
+Non-whole-grain rice and pasta,Census Region 1: Northeast,0.6255478096369238
+Non-whole-grain rice and pasta,Census Region 2: Midwest,0.5835526135166638
+Non-whole-grain rice and pasta,Census Region 3: South,0.6370941889303423
+Non-whole-grain rice and pasta,Census Region 4: West,0.5182380522766841
+"Shelf-stable, ready-to-heat foods and soups",Census Region 1: Northeast,0.9820981287417377
+"Shelf-stable, ready-to-heat foods and soups",Census Region 2: Midwest,0.9647816017164782
+"Shelf-stable, ready-to-heat foods and soups",Census Region 3: South,0.9690215375086422
+"Shelf-stable, ready-to-heat foods and soups",Census Region 4: West,0.9713180363018123
+Whole-grain breads,Census Region 1: Northeast,0.27600478080560387
+Whole-grain breads,Census Region 2: Midwest,0.30417101809418245
+Whole-grain breads,Census Region 3: South,0.2580779304948141
+Whole-grain breads,Census Region 4: West,0.3779189277236866
+Whole-grain breakfast cereal,Census Region 1: Northeast,0.5806930703787678
+Whole-grain breakfast cereal,Census Region 2: Midwest,0.43821636579144885
+Whole-grain breakfast cereal,Census Region 3: South,0.5336416192134414
+Whole-grain breakfast cereal,Census Region 4: West,0.6069893079892528
+Whole-grain rice and pasta,Census Region 1: Northeast,0.5825908748755257
+Whole-grain rice and pasta,Census Region 2: Midwest,0.5410853079068567
+Whole-grain rice and pasta,Census Region 3: South,0.5744672499984127
+Whole-grain rice and pasta,Census Region 4: West,0.4907167938685335
