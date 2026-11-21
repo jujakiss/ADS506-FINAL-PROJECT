@@ -1,0 +1,115 @@
+---
+title: "F-Map"
+format: pdf
+editor: visual
+---
+
+## Problem Statement
+
+How accurately can monthly retail food price indexes be forecast across different food categories and U.S. regions, and which forecasting methods perform best when accounting for seasonality?
+
+```{r}
+install.packages("fpp3")
+```
+
+```{r}
+#| label: import-fmap
+library(fpp3)
+
+## Import and inspect F-MAP data
+fmap <- read.csv("FMAP_Hannah.csv", check.names = FALSE)
+
+dim(fmap)
+names(fmap)
+head(fmap, 3)
+```
+
+```{r}
+#| label: prepare-fmap-series
+#| 
+## Prepare the monthly time series
+fmap_monthly <- fmap |>
+  transmute(
+    category = EFPG_name,
+    region = Metroregion_name,
+    month = yearmonth(as.Date(Date)),
+    price_index = Price_index_GEKS
+  ) |>
+  as_tsibble(key = c(category, region), index = month)
+
+fmap_train <- fmap_monthly |> filter(month < yearmonth("2018 Jan"))
+fmap_test <- fmap_monthly |> filter(month >= yearmonth("2018 Jan"))
+
+tibble(
+  Dataset = c("Training (2012–2017)", "Testing (2018)"),
+  Series = c(n_keys(fmap_train), n_keys(fmap_test)),
+  Rows = c(nrow(fmap_train), nrow(fmap_test))
+)
+```
+
+```{r}
+#| label: fmap-seasonal-strength
+
+## Measure seasonal strength
+fmap_seasonality <- fmap_train |>
+  features(price_index, feat_stl) |>
+  select(category, region, seasonal_strength_year) |>
+  arrange(desc(seasonal_strength_year))
+
+fmap_seasonality
+```
+
+```{r}
+#| label: fmap-model-comparison
+
+# Compare forecast accuracy on 2018 test set
+fmap_models <- fmap_train |>
+  model(
+    SNAIVE = SNAIVE(price_index),
+    ETS = ETS(price_index),
+    ARIMA = ARIMA(price_index)
+  )
+
+fmap_forecasts <- fmap_models |>
+  forecast(h = 12)
+
+fmap_accuracy <- fmap_forecasts |>
+  accuracy(fmap_test) |>
+  select(category, region, .model, MAE, RMSE)
+
+fmap_accuracy
+```
+
+### Summarize Model Performance 
+
+Use MAE as the primary ranking metric and keep RMSE to see how the models compare when larger errors carry more weight.
+
+```{r}
+#| label: fmap-model-summary
+
+## Summarize 2018 forecast performance
+fmap_model_summary <- fmap_accuracy |>
+  group_by(.model) |>
+  summarise(
+    series_scored = sum(is.finite(MAE) & is.finite(RMSE)),
+    mean_MAE = mean(MAE),
+    mean_RMSE = mean(RMSE),
+    .groups = "drop"
+  ) |>
+  arrange(mean_MAE)
+
+fmap_winners <- fmap_accuracy |>
+  group_by(category, region) |>
+  filter(n() == 3, all(is.finite(MAE))) |>
+  slice_min(MAE, with_ties = TRUE) |>
+  ungroup()
+
+fmap_model_summary
+
+fmap_winners |>
+  count(.model, name = "series_with_lowest_MAE", sort = TRUE)
+```
+
+ETS performed best overall on the 40 series in the 2018 holdout with the lowest mean MAE and RMSE.
+
+SNAIVE had the lowest MAE on more series than ARIMA, while ARIMA had lower errors on average. One series had a tie and is counted twice.
