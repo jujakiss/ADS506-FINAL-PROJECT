@@ -9,7 +9,8 @@ editor: visual
 How accurately can monthly retail food price indexes be forecast across different food categories and U.S. regions, and which forecasting methods perform best when accounting for seasonality?
 
 ```{r}
-install.packages("fpp3")
+# install.packages("fpp3")
+csv_path <- file.choose()
 ```
 
 ```{r}
@@ -17,7 +18,8 @@ install.packages("fpp3")
 library(fpp3)
 
 ## Import and inspect F-MAP data
-fmap <- read.csv("FMAP_Hannah.csv", check.names = FALSE)
+csv_path
+fmap <- read.csv(csv_path, check.names = FALSE)
 
 dim(fmap)
 names(fmap)
@@ -80,7 +82,7 @@ fmap_accuracy <- fmap_forecasts |>
 fmap_accuracy
 ```
 
-### Summarize Model Performance 
+### Summarize Model Performance
 
 Use MAE as the primary ranking metric and keep RMSE to see how the models compare when larger errors carry more weight.
 
@@ -113,3 +115,25 @@ fmap_winners |>
 ETS performed best overall on the 40 series in the 2018 holdout with the lowest mean MAE and RMSE.
 
 SNAIVE had the lowest MAE on more series than ARIMA, while ARIMA had lower errors on average. One series had a tie and is counted twice.
+
+### Compare by Seasonality
+
+```{r}
+fmap_seasonal_winners <- fmap_winners |>
+  left_join(fmap_seasonality, by = c("category", "region"))
+
+ggplot(fmap_seasonal_winners,
+       aes(x = seasonal_strength_year, y = .model)) +
+  geom_jitter(
+    position = position_jitter(width = 0, height = 0.12, seed = 506),
+    alpha = 0.7
+  ) +
+  labs(
+    title = "Seasonal strength of series where each model performed best",
+       x = "Annual seasonal strength (2012-2017)",
+    y = "Model with lowest 2018 MAE",
+  ) +
+  theme_minimal()
+```
+
+Here, annual seasonal strength from 2012-2017 is compared with the model that had the lowest forecast error in 2018. All three models won for series with both weaker and stronger seasonality. ETS won across a wide range of seasonal strengths, and seasonal naive and ARIMA also won for some series near 0.90. In this comparison, seasonal strength alone gave little guidance on which model would perform best.
