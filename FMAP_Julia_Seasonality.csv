@@ -1,0 +1,41 @@
+category,region,seasonal_strength
+"Beans, lentils, and peas, canned",Census Region 1: Northeast,0.43362679599438847
+"Beans, lentils, and peas, canned",Census Region 2: Midwest,0.7732097419703344
+"Beans, lentils, and peas, canned",Census Region 3: South,0.500555139887837
+"Beans, lentils, and peas, canned",Census Region 4: West,0.5867962505949297
+"Beans, lentils, and peas, fresh/dried",Census Region 1: Northeast,0.6091198403980902
+"Beans, lentils, and peas, fresh/dried",Census Region 2: Midwest,0.29285000098929814
+"Beans, lentils, and peas, fresh/dried",Census Region 3: South,0.39220342156690646
+"Beans, lentils, and peas, fresh/dried",Census Region 4: West,0.19955821391027628
+"Other red and orange vegetables, canned",Census Region 1: Northeast,0.9187217119770353
+"Other red and orange vegetables, canned",Census Region 2: Midwest,0.906511347753147
+"Other red and orange vegetables, canned",Census Region 3: South,0.9028766647061561
+"Other red and orange vegetables, canned",Census Region 4: West,0.9044024573392311
+"Other red and orange vegetables, fresh",Census Region 1: Northeast,0.863628685194781
+"Other red and orange vegetables, fresh",Census Region 2: Midwest,0.832630336227571
+"Other red and orange vegetables, fresh",Census Region 3: South,0.9296984494157294
+"Other red and orange vegetables, fresh",Census Region 4: West,0.6634171558664099
+"Other starchy vegetables, canned",Census Region 1: Northeast,0.921496382839335
+"Other starchy vegetables, canned",Census Region 2: Midwest,0.9043646627604317
+"Other starchy vegetables, canned",Census Region 3: South,0.8966261898936012
+"Other starchy vegetables, canned",Census Region 4: West,0.899991778728166
+"Other starchy vegetables, fresh",Census Region 1: Northeast,0.8466135098741203
+"Other starchy vegetables, fresh",Census Region 2: Midwest,0.9569875388845723
+"Other starchy vegetables, fresh",Census Region 3: South,0.9235685873123485
+"Other starchy vegetables, fresh",Census Region 4: West,0.9181584108342025
+"Potatoes, fresh",Census Region 1: Northeast,0.7936654971410886
+"Potatoes, fresh",Census Region 2: Midwest,0.6709659392848459
+"Potatoes, fresh",Census Region 3: South,0.6096980845533493
+"Potatoes, fresh",Census Region 4: West,0.4204642650755157
+"Tomatoes, fresh",Census Region 1: Northeast,0.6836852666463169
+"Tomatoes, fresh",Census Region 2: Midwest,0.7644260777787019
+"Tomatoes, fresh",Census Region 3: South,0.6643888062184942
+"Tomatoes, fresh",Census Region 4: West,0.7320570267320041
+"Whole fruit, canned",Census Region 1: Northeast,0.8468807205145867
+"Whole fruit, canned",Census Region 2: Midwest,0.800938831846924
+"Whole fruit, canned",Census Region 3: South,0.7886774511656173
+"Whole fruit, canned",Census Region 4: West,0.7282971140735754
+"Whole fruit, fresh",Census Region 1: Northeast,0.8793486398416726
+"Whole fruit, fresh",Census Region 2: Midwest,0.8906803781890456
+"Whole fruit, fresh",Census Region 3: South,0.8910416904947712
+"Whole fruit, fresh",Census Region 4: West,0.8736755579279348

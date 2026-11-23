@@ -1,0 +1,847 @@
+---
+title: "project 506"
+format: html
+editor: visual
+---
+
+## EDA
+
+#### **Exploratory Data Analysis of Monthly U.S. Food Prices (2012–2018)**
+
+```         
+This initial analysis examines the USDA Economic Research Service's
+Food-at-Home Monthly Area Prices (F-MAP) dataset. The goal is to
+evaluate data completeness, regional price patterns, and seasonality
+before selecting food categories for the forecasting project.
+```
+
+```{r}
+# Load packages
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(fpp3)
+library(tidyverse)
+
+# Import USDA F-MAP data
+fmap <- read_excel("FMAP.xlsx", sheet = "Data")
+
+# Create monthly date variable
+fmap <- fmap %>%
+  mutate(
+    Date = make_date(Year, Month, 1)
+  )
+
+# Examine dataset structure
+glimpse(fmap)
+
+# Check dataset dimensions
+dim(fmap)
+
+# Count food categories and geographic areas
+n_distinct(fmap$EFPG_name)
+n_distinct(fmap$Metroregion_name)
+
+# Check date range
+range(fmap$Date)
+
+# Check missing values in key variables
+colSums(is.na(
+  fmap[, c("Date", "EFPG_name",
+           "Metroregion_name", "Price_index_GEKS")]
+))
+```
+
+## Exploring Food Categories and Geographic Coverage
+
+*This section examines the available food categories and geographic areas to identify potential subseries for forecasting. The goal is to select a diverse set of food categories that can be compared across consistent geographic regions.*
+
+```{r}
+# List all available food categories
+food_categories <- fmap %>%
+  distinct(EFPG_name) %>%
+  arrange(EFPG_name)
+
+print(food_categories, n = Inf)
+
+# List all geographic areas
+regions <- fmap %>%
+  distinct(Metroregion_name) %>%
+  arrange(Metroregion_name)
+
+print(regions, n = Inf)
+
+# Check monthly coverage for each category and area
+coverage <- fmap %>%
+  group_by(EFPG_name, Metroregion_name) %>%
+  summarise(
+    Months = n_distinct(Date),
+    .groups = "drop"
+  )
+
+# Summarize completeness
+summary(coverage$Months)
+```
+
+```{r}
+seasonality_ranking <- fmap %>%
+  filter(
+    year(Date) <= 2017,
+    grepl("^Census Region", Metroregion_name)
+  ) %>%
+  mutate(Month_Index = yearmonth(Date)) %>%
+  as_tsibble(
+    key = c(EFPG_name, Metroregion_name),
+    index = Month_Index
+  ) %>%
+  features(Price_index_GEKS, feat_stl) %>%
+  group_by(EFPG_name) %>%
+  summarise(
+    Average_Strength = mean(seasonal_strength_year),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(Average_Strength))
+
+print(seasonality_ranking)
+```
+
+## Exploring Seasonality Across Food Categories
+
+*This section explores monthly price patterns across selected food categories and U.S. Census regions. The goal is to identify recurring seasonal behavior and determine which categories may be suitable for further forecasting analysis.*
+
+```{r}
+# Select six food categories for initial seasonal exploration
+selected_foods <- c(
+  "Beans, lentils, and peas, fresh/dried",
+  "Egg and egg substitutes",
+  "Whole-grain rice and pasta",
+  "Tomatoes, fresh",
+  "Potatoes, fresh",
+  "Whole fruit, fresh"
+)
+
+# Select four Census regions
+selected_regions <- c(
+  "Census Region 1: Northeast",
+  "Census Region 2: Midwest",
+  "Census Region 3: South",
+  "Census Region 4: West"
+)
+
+# Filter data for seasonal analysis
+seasonal_data <- fmap %>%
+  filter(
+    EFPG_name %in% selected_foods,
+    Metroregion_name %in% selected_regions
+  )
+
+# Plot monthly price indexes across regions
+ggplot(seasonal_data,
+       aes(x = Date, y = Price_index_GEKS,
+           color = Metroregion_name)) +
+  geom_line(linewidth = 0.7) +
+  facet_wrap(~ EFPG_name, scales = "free_y", ncol = 2) +
+  labs(
+    title = "Monthly Food Price Indexes Across U.S. Regions",
+    subtitle = "Selected food categories, 2012–2018",
+    x = "Year",
+    y = "Price Index (GEKS)",
+    color = "Region"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(size = 9)
+  )
+```
+
+## 
+
+## Comparing Monthly Seasonal Patterns
+
+*This section compares average monthly price indexes for selected food categories to examine recurring seasonal patterns and differences across U.S. Census regions.*
+
+```{r}
+# Select six high-ranking categories
+top_foods <- seasonality_ranking %>%
+  slice_head(n = 6) %>%
+  pull(EFPG_name)
+
+# Calculate average monthly price index
+monthly_patterns <- fmap %>%
+  filter(
+    EFPG_name %in% top_foods,
+    Metroregion_name %in% selected_regions
+  ) %>%
+  group_by(EFPG_name, Metroregion_name, Month) %>%
+  summarise(
+    Average_Index = mean(Price_index_GEKS),
+    .groups = "drop"
+  )
+
+# Plot average seasonal patterns
+ggplot(
+  monthly_patterns,
+  aes(
+    x = Month,
+    y = Average_Index,
+    color = Metroregion_name,
+    group = Metroregion_name
+  )
+) +
+  geom_line(linewidth = 0.9) +
+  geom_point(size = 1.5) +
+  facet_wrap(~ EFPG_name, scales = "free_y", ncol = 2) +
+  scale_x_continuous(breaks = 1:12) +
+  labs(
+    title = "Average Monthly Food Price Patterns by Region",
+    subtitle = "Top six categories by estimated seasonal strength, 2012–2018",
+    x = "Month",
+    y = "Average Price Index (GEKS)",
+    color = "Region"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(size = 9)
+  )
+```
+
+## Evaluating Seasonal Consistency Across Years
+
+*This section examines whether seasonal price patterns repeat consistently across years for selected food categories.*
+
+```{r}
+# Examine year-to-year patterns for three promising categories
+consistency_foods <- c(
+  "Other starchy vegetables, fresh",
+  "Shelf-stable, ready-to-heat foods and soups",
+  "Whole fruit, fresh"
+)
+
+consistency_data <- fmap %>%
+  filter(
+    EFPG_name %in% consistency_foods,
+    Metroregion_name == "Census Region 4: West"
+  )
+
+ggplot(
+  consistency_data,
+  aes(
+    x = Month,
+    y = Price_index_GEKS,
+    color = factor(Year),
+    group = Year
+  )
+) +
+  geom_line(linewidth = 0.8) +
+  facet_wrap(~ EFPG_name, scales = "free_y") +
+  scale_x_continuous(breaks = 1:12) +
+  labs(
+    title = "Seasonal Price Patterns Across Years",
+    subtitle = "Western U.S., 2012–2018",
+    x = "Month",
+    y = "Price Index (GEKS)",
+    color = "Year"
+  ) +
+  theme_minimal()
+```
+
+## Selecting Food Categories for Team Analysis
+
+*Based on the initial EDA, food categories were selected to represent different product groups and levels of seasonality. Each team member will examine ten categories across the same four Census regions, allowing for consistent comparisons of regional and seasonal patterns.*
+
+```{r}
+# Proposed food categories for each team member
+team_categories <- tibble::tibble(
+  Team_Member = rep(c("Julia", "Hannah", "Marina"), each = 10),
+  
+  EFPG_name = c(
+    # Julia: Vegetables, legumes, and produce
+    "Beans, lentils, and peas, fresh/dried",
+    "Beans, lentils, and peas, canned",
+    "Other starchy vegetables, fresh",
+    "Other starchy vegetables, canned",
+    "Other red and orange vegetables, fresh",
+    "Other red and orange vegetables, canned",
+    "Tomatoes, fresh",
+    "Potatoes, fresh",
+    "Whole fruit, fresh",
+    "Whole fruit, canned",
+    
+    # Hannah: Animal products and dairy
+    "Egg and egg substitutes",
+    "Chicken, turkey, and game birds, fresh",
+    "Chicken, turkey, and game birds, frozen",
+    "Beef, pork, lamb, veal and game, fresh",
+    "Fish and seafood, fresh",
+    "Whole milk",
+    "Whole cream and sour cream",
+    "Cheese and cream cheese",
+    "Ice cream and other milk-based desserts",
+    "Whole yogurt",
+    
+    # Marina: Grains and packaged foods
+    "Whole-grain breads",
+    "Non-whole-grain breads",
+    "Whole-grain rice and pasta",
+    "Non-whole-grain rice and pasta",
+    "Whole-grain breakfast cereal",
+    "All other breakfast cereal",
+    "Non-whole-grain flour, bread mixes, and frozen dough",
+    "Shelf-stable, ready-to-heat foods and soups",
+    "Baked goods",
+    "All other desserts"
+  )
+)
+
+# Add the seasonal-strength scores calculated earlier
+team_selection <- team_categories %>%
+  left_join(seasonality_ranking, by = "EFPG_name") %>%
+  arrange(Team_Member, desc(Average_Strength))
+
+# Display the proposed team assignments
+print(team_selection, n = Inf)
+
+# Verify category counts and seasonal-strength ranges
+team_selection %>%
+  group_by(Team_Member) %>%
+  summarise(
+    Categories = n(),
+    Mean_Strength = round(mean(Average_Strength), 3),
+    Min_Strength = round(min(Average_Strength), 3),
+    Max_Strength = round(max(Average_Strength), 3),
+    .groups = "drop"
+  )
+
+```
+
+```{r}
+# Keep selected categories and Census regions
+team_data <- fmap %>%
+  inner_join(team_categories, by = "EFPG_name") %>%
+  filter(Metroregion_name %in% selected_regions)
+
+# Export one dataset per team member
+for (member in unique(team_data$Team_Member)) {
+  
+  member_data <- team_data %>%
+    filter(Team_Member == member) %>%
+    arrange(EFPG_name, Metroregion_name, Date)
+  
+  write.csv(
+    member_data,
+    paste0("FMAP_", member, ".csv"),
+    row.names = FALSE
+  )
+}
+
+# Verify observations per team member
+team_data %>%
+  count(Team_Member)
+```
+
+## 1. Data Preparation: Fruits, Vegetables, and Legumes
+
+#### 1.1 Load Packages and Import Data
+
+```{r}
+library(fpp3)
+library(tidyverse)
+
+fmap <- read_csv("FMAP_Julia.csv")
+
+glimpse(fmap)
+```
+
+#### 1.2 Create Monthly Time Series
+
+```{r}
+fmap_ts <- fmap %>%
+  select(Date, EFPG_name, Metroregion_name, Price_index_GEKS) %>%
+  mutate(Month_Index = yearmonth(Date)) %>%
+  select(-Date) %>%
+  as_tsibble(
+    key = c(EFPG_name, Metroregion_name),
+    index = Month_Index
+  )
+
+fmap_ts
+```
+
+#### 1.3 Verify Time Series Structure
+
+```{r}
+# List unique food categories
+unique(fmap_ts$EFPG_name)
+
+# Count unique food categories
+n_distinct(fmap_ts$EFPG_name)
+
+# Count unique regions
+n_distinct(fmap_ts$Metroregion_name)
+
+# Verify observations per category and region
+fmap_ts %>%
+  as_tibble() %>%
+  count(EFPG_name, Metroregion_name)
+```
+
+## 2. Exploratory Data Analysis: Fruits, Vegetables, and Legumes
+
+#### 2.1 Price Index Trends Across Food Categories
+
+```{r}
+#| fig-width: 12
+#| fig-height: 15
+ggplot(fmap_ts, aes(x = Month_Index, 
+                    y = Price_index_GEKS,
+                    color = Metroregion_name)) +
+  geom_line(linewidth = 0.6) +
+  facet_wrap(~ EFPG_name, ncol = 2, scales = "free_y") +
+  labs(
+    title = "Monthly Price Index Trends by Food Category",
+    subtitle = "Fruits, vegetables, and legumes (2012–2018)",
+    x = "Year",
+    y = "Price Index",
+    color = "Region"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+Several food categories display recurring annual patterns, particularly fresh whole fruit and both fresh and canned starchy vegetables. In comparison, canned beans, lentils, and peas show less regular fluctuations over time. Regional differences are also noticeable, especially for fresh potatoes and tomatoes, where the Northeast generally maintains a higher price index than the other regions. While some categories follow similar patterns across all four regions, others show greater regional variation. These differences suggest that seasonality and geographic region may be important considerations when selecting forecasting models.
+
+#### 2.2 Seasonal and Trend Strength
+
+```{r}
+fmap_features <- fmap_ts %>%
+  filter(year(Month_Index) <= 2017) %>%
+  features(Price_index_GEKS, feat_stl)
+
+print(fmap_features)
+```
+
+#### 2.3 Seasonal and Trend Strength by Food Category
+
+```{r}
+category_features <- fmap_features %>%
+  group_by(EFPG_name) %>%
+  summarise(
+    Mean_Seasonal_Strength = mean(seasonal_strength_year),
+    Mean_Trend_Strength = mean(trend_strength)
+  ) %>%
+  arrange(desc(Mean_Seasonal_Strength))
+
+knitr::kable(
+  category_features,
+  digits = 3,
+  col.names = c(
+    "Food Category",
+    "Mean Seasonal Strength",
+    "Mean Trend Strength"
+  ),
+  caption = "Average Seasonal and Trend Strength by Food Category"
+)
+```
+
+#### 2.4 Seasonal Strength Visualization
+
+```{r}
+ggplot(category_features,
+       aes(x = reorder(EFPG_name, Mean_Seasonal_Strength),
+           y = Mean_Seasonal_Strength,
+           fill = Mean_Seasonal_Strength)) +
+  geom_col() +
+  geom_text(
+    aes(label = round(Mean_Seasonal_Strength, 3)),
+    hjust = -0.2,
+    size = 3.5
+  ) +
+  coord_flip() +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(
+    title = "Seasonal Strength Across Food Categories",
+    subtitle = "Average across four U.S. Census regions",
+    x = NULL,
+    y = "Mean Seasonal Strength"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## 3. Forecasting Model Development
+
+#### 3.1 Training and Testing Split
+
+```{r}
+fmap_train <- fmap_ts %>%
+  filter(year(Month_Index) <= 2017)
+
+fmap_test <- fmap_ts %>%
+  filter(year(Month_Index) == 2018)
+
+nrow(fmap_train)
+nrow(fmap_test)
+```
+
+#### 3.2 Fit Forecasting Models
+
+```{r}
+fmap_models <- fmap_train %>%
+  model(
+    SNAIVE = SNAIVE(Price_index_GEKS),
+    ETS = ETS(Price_index_GEKS),
+    ARIMA = ARIMA(Price_index_GEKS)
+  )
+
+fmap_models
+```
+
+## 4. Forecasting and Model Evaluation
+
+#### 4.1 Generate Forecasts for 2018
+
+```{r}
+fmap_forecasts <- fmap_models %>%
+  forecast(h = 12)
+
+fmap_forecasts
+```
+
+#### 4.2 Forecast Accuracy Across Categories and Regions
+
+```{r}
+fmap_accuracy <- fmap_forecasts %>%
+  accuracy(fmap_ts) %>%
+  select(EFPG_name, Metroregion_name, .model, RMSE, MAE, MAPE)
+
+print(fmap_accuracy)
+```
+
+#### 4.3 Overall Model Performance
+
+```{r}
+model_summary <- fmap_accuracy %>%
+  group_by(.model) %>%
+  summarise(
+    Mean_RMSE = mean(RMSE),
+    Mean_MAE = mean(MAE),
+    Mean_MAPE = mean(MAPE)
+  ) %>%
+  arrange(Mean_RMSE)
+
+knitr::kable(
+  model_summary,
+  digits = 4,
+  col.names = c(
+    "Model",
+    "Mean RMSE",
+    "Mean MAE",
+    "Mean MAPE (%)"
+  ),
+  caption = "Average Forecast Accuracy by Model"
+)
+```
+
+ETS achieved the lowest average RMSE of 0.0326, while SNAIVE had the lowest average MAPE of 2.69%. Both models had nearly identical MAE values. ARIMA performed slightly worse across all three metrics. However, the differences between the models were relatively small, suggesting that more complex forecasting methods do not necessarily provide substantial improvements over the seasonal naive baseline.
+
+#### 4.4 Best Performing Model by Food Category
+
+```{r}
+category_accuracy <- fmap_accuracy %>%
+  group_by(EFPG_name, .model) %>%
+  summarise(
+    Mean_RMSE = mean(RMSE),
+    Mean_MAE = mean(MAE),
+    Mean_MAPE = mean(MAPE),
+    .groups = "drop"
+  )
+
+best_category_models <- category_accuracy %>%
+  group_by(EFPG_name) %>%
+  slice_min(Mean_RMSE, n = 1, with_ties = TRUE) %>%
+  ungroup()
+
+knitr::kable(
+  best_category_models,
+  digits = 4,
+  col.names = c(
+    "Food Category",
+    "Best Model",
+    "Mean RMSE",
+    "Mean MAE",
+    "Mean MAPE (%)"
+  ),
+  caption = "Best Performing Model by Food Category Based on RMSE"
+)
+```
+
+#### 4.5 Model Performance and Seasonality
+
+```{r}
+seasonality_comparison <- best_category_models %>%
+  left_join(category_features, by = "EFPG_name") %>%
+  select(
+    EFPG_name,
+    Mean_Seasonal_Strength,
+    Mean_Trend_Strength,
+    .model,
+    Mean_RMSE
+  ) %>%
+  arrange(desc(Mean_Seasonal_Strength))
+
+knitr::kable(
+  seasonality_comparison,
+  digits = 4,
+  col.names = c(
+    "Food Category",
+    "Seasonal Strength",
+    "Trend Strength",
+    "Best Model",
+    "Mean RMSE"
+  ),
+  caption = "Seasonality and Best Forecasting Model by Food Category"
+)
+```
+
+#### 4.6 Best Performing Model by Region
+
+```{r}
+regional_accuracy <- fmap_accuracy %>%
+  group_by(Metroregion_name, .model) %>%
+  summarise(
+    Mean_RMSE = mean(RMSE),
+    Mean_MAE = mean(MAE),
+    Mean_MAPE = mean(MAPE),
+    .groups = "drop"
+  )
+
+best_regional_models <- regional_accuracy %>%
+  group_by(Metroregion_name) %>%
+  slice_min(Mean_RMSE, n = 1, with_ties = TRUE) %>%
+  ungroup()
+
+knitr::kable(
+  best_regional_models,
+  digits = 4,
+  col.names = c(
+    "Region",
+    "Best Model",
+    "Mean RMSE",
+    "Mean MAE",
+    "Mean MAPE (%)"
+  ),
+  caption = "Best Performing Model by Region Based on RMSE"
+)
+```
+
+SNAIVE performed best in the Northeast and South, while ARIMA performed best in the Midwest and ETS performed best in the West. The Midwest also had the lowest RMSE among the four regional winners. These findings highlight the importance of considering geographic differences when evaluating forecasting models rather than relying solely on overall performance.
+
+#### 4.7 Best Performing Model Across Individual Time Series
+
+```{r}
+best_series_models <- fmap_accuracy %>%
+  group_by(EFPG_name, Metroregion_name) %>%
+  slice_min(RMSE, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+ggplot(best_series_models,
+       aes(x = Metroregion_name,
+           y = EFPG_name,
+           fill = .model)) +
+  geom_tile(color = "white", linewidth = 1) +
+  geom_text(aes(label = .model), color = "white", size = 3.5) +
+  scale_fill_manual(values = c(
+    "ARIMA" = "#4477AA",
+    "ETS" = "#228833",
+    "SNAIVE" = "#AA3377"
+  )) +
+  scale_x_discrete(labels = c(
+    "Northeast", "Midwest", "South", "West"
+  )) +
+  labs(
+    title = "Best Forecasting Model by Food Category and Region",
+    subtitle = "Model selection based on lowest test RMSE",
+    x = "Region",
+    y = NULL,
+    fill = "Model"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(),
+    legend.position = "bottom"
+  )
+```
+
+#### 4.8 Frequency of Best Performing Models
+
+```{r}
+best_series_models %>%
+  count(.model, name = "Series_Won") %>%
+  mutate(Percentage = 100 * Series_Won / sum(Series_Won)) %>%
+  arrange(desc(Series_Won))
+```
+
+#### 4.9 MAE Verification of Best Performing Models
+
+```{r}
+# Identify the best model for each series using MAE
+best_series_mae <- fmap_accuracy %>%
+  group_by(EFPG_name, Metroregion_name) %>%
+  slice_min(MAE, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+# Count model wins based on MAE
+best_series_mae %>%
+  count(.model, name = "Series_Won")
+
+# Compare RMSE and MAE winners
+model_agreement <- best_series_models %>%
+  select(EFPG_name, Metroregion_name,
+         RMSE_Model = .model) %>%
+  left_join(
+    best_series_mae %>%
+      select(EFPG_name, Metroregion_name,
+             MAE_Model = .model),
+    by = c("EFPG_name", "Metroregion_name")
+  ) %>%
+  mutate(Same_Model = RMSE_Model == MAE_Model)
+
+model_agreement %>%
+  summarise(
+    Total_Series = n(),
+    Matching_Winners = sum(Same_Model),
+    Agreement_Percentage = 100 * mean(Same_Model)
+  )
+```
+
+Using MAE instead of RMSE produced the same winning model for 36 of the 40 time series, resulting in 90% agreement. ETS remained the most frequently selected model, followed by ARIMA and SNAIVE. This suggests that our overall findings are fairly consistent regardless of which error metric is used to select the best model.
+
+#### 4.10 Actual vs. Forecasted Price Indexes
+
+```{r}
+#| fig-width: 15
+#| fig-height: 10
+
+selected_categories <- c(
+  "Other starchy vegetables, fresh",
+  "Whole fruit, fresh",
+  "Beans, lentils, and peas, fresh/dried"
+)
+
+fmap_forecasts %>%
+  filter(EFPG_name %in% selected_categories) %>%
+  autoplot(
+    fmap_ts %>%
+      filter(
+        EFPG_name %in% selected_categories,
+        year(Month_Index) >= 2016
+      ),
+    level = NULL
+  ) +
+  facet_grid(
+    EFPG_name ~ Metroregion_name,
+    scales = "free_y",
+    labeller = labeller(
+      Metroregion_name = function(x) {
+        sub("Census Region [0-9]: ", "", x)
+      },
+      EFPG_name = label_wrap_gen(width = 22)
+    )
+  ) +
+  scale_x_yearmonth(
+    date_breaks = "1 year",
+    date_labels = "%Y"
+  ) +
+  labs(
+    title = "Actual vs. Forecasted Food Price Indexes",
+    subtitle = "2018 forecasts across selected food categories",
+    x = "Year",
+    y = "Price Index",
+    color = "Model"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(size = 10),
+    panel.spacing = grid::unit(1.2, "lines"),
+    axis.text.x = element_text(size = 9),
+    panel.grid.minor = element_blank()
+  )
+```
+
+All three models generally captured the recurring seasonal patterns in fresh starchy vegetables and fresh whole fruit, although they sometimes underestimated or overestimated the peaks and troughs. The most noticeable forecasting error occurred in fresh/dried legumes in the West, where ARIMA predicted a continued decline that did not occur. This helps explain its relatively high forecasting error for that particular time series.
+
+## 5. Model Diagnostics
+
+#### 5.1 Residual Autocorrelation
+
+```{r}
+fmap_residuals <- fmap_models %>%
+  augment()
+
+residual_tests <- fmap_residuals %>%
+  features(
+    .innov,
+    ljung_box,
+    lag = 12,
+    dof = 0
+  )
+
+print(residual_tests)
+```
+
+#### 5.2 Residual Diagnostic Summary
+
+```{r}
+diagnostic_summary <- residual_tests %>%
+  group_by(.model) %>%
+  summarise(
+    Total_Series = n(),
+    No_Significant_Autocorrelation = sum(lb_pvalue > 0.05),
+    Significant_Autocorrelation = sum(lb_pvalue <= 0.05),
+    Percentage_Passed = 100 * mean(lb_pvalue > 0.05),
+    .groups = "drop"
+  )
+
+knitr::kable(
+  diagnostic_summary,
+  digits = 2,
+  caption = "Ljung-Box Diagnostic Results by Model"
+)
+```
+
+## 6. Export Results for Combined Team Analysis
+
+```{r}
+# Export accuracy results
+final_accuracy <- fmap_accuracy %>%
+  transmute(
+    category = EFPG_name,
+    region = Metroregion_name,
+    model = .model,
+    RMSE,
+    MAE,
+    MAPE
+  )
+
+write_csv(final_accuracy, "FMAP_Julia_Accuracy.csv")
+
+# Export seasonal strength results
+final_seasonality <- fmap_features %>%
+  transmute(
+    category = EFPG_name,
+    region = Metroregion_name,
+    seasonal_strength = seasonal_strength_year
+  )
+
+write_csv(final_seasonality, "FMAP_Julia_Seasonality.csv")
+
+# Verify exports
+cat("Accuracy rows:", nrow(final_accuracy), "\n")
+cat("Seasonality rows:", nrow(final_seasonality), "\n")
+cat("Saved in:", getwd(), "\n")
+```
