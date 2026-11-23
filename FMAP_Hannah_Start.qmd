@@ -77,9 +77,13 @@ fmap_forecasts <- fmap_models |>
 
 fmap_accuracy <- fmap_forecasts |>
   accuracy(fmap_test) |>
-  select(category, region, .model, MAE, RMSE)
+  select(category, region, .model, MAE, RMSE, MAPE)
 
 fmap_accuracy
+fmap_accuracy |>
+  dplyr::select(category, region, model = .model, RMSE, MAE, MAPE) |>
+  readr::write_csv("FMAP_Hannah_Accuracy.csv")
+
 ```
 
 ### Summarize Model Performance
