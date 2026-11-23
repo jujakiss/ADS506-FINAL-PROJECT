@@ -66,6 +66,37 @@ fmap_ts |>
 
 ```
 
+```{r}
+#| label: data-quality-summary
+
+fmap_ts |>
+  as_tibble() |>
+  summarise(
+    Total_Observations = n(),
+    Total_Series = n_distinct(
+      paste(EFPG_name, Metroregion_name)
+    ),
+    Missing_Prices = sum(is.na(Price_index_GEKS)),
+    Duplicate_Keys = sum(
+      duplicated(
+        data.frame(EFPG_name, Metroregion_name, Date)
+      )
+    )
+  )
+```
+
+```{r}
+#| label: missing-months-summary
+
+fmap_ts |>
+  count_gaps() |>
+  summarise(
+    Missing_Months = sum(.n)
+  )
+```
+
+### The dataset contained 3,360 observations across 40 monthly time series. Data quality checks identified no missing price-index values, missing months, or duplicate category-region-month combinations.
+
 ## 2. Exploratory Data Analysis
 
 ```{r}
@@ -379,7 +410,43 @@ forecasts |>
 
 ```
 
+```{r}
+#| label: baked-goods-forecast-comparison
+
+actual_2018 <- test |>
+  filter(
+    EFPG_name == "Baked goods",
+    Metroregion_name == "Census Region 4: West"
+  ) |>
+  as_tibble() |>
+  select(Date, Actual = Price_index_GEKS)
+
+predicted_2018 <- forecasts |>
+  filter(
+    EFPG_name == "Baked goods",
+    Metroregion_name == "Census Region 4: West"
+  ) |>
+  as_tibble() |>
+  select(Date, .model, .mean) |>
+  tidyr::pivot_wider(
+    names_from = .model,
+    values_from = .mean
+  )
+
+actual_2018 |>
+  left_join(predicted_2018, by = "Date") |>
+  mutate(
+    across(
+      where(is.numeric),
+      ~ round(.x, 4)
+    )
+  ) |>
+  print(n = Inf)
+```
+
 ## 6. Model Evaluation
+
+### Forecast accuracy was evaluated using three metrics: Root Mean Squared Error (RMSE), Mean Absolute Error (MAE), and Mean Absolute Percentage Error (MAPE). RMSE and MAE measure differences between predicted and observed values in price-index units, while MAPE expresses forecast error as a percentage. Lower values indicate greater forecasting accuracy.
 
 ```{r}
 
@@ -424,6 +491,18 @@ write_csv(
 
 ```
 
+```{r}
+#| label: baked-goods-accuracy
+
+accuracy_export |>
+  filter(
+    category == "Baked goods",
+    region == "Census Region 4: West"
+  ) |>
+  arrange(MAE) |>
+  print()
+```
+
 ### Compare Average Model Performance
 
 ```{r}
@@ -454,6 +533,60 @@ best_models |>
 # View the best model for each subseries
 best_models
 
+```
+
+```{r}
+#| label: mae-model-wins
+
+best_models_mae <- accuracy_export |>
+  group_by(category, region) |>
+  slice_min(MAE, n = 1, with_ties = FALSE) |>
+  ungroup()
+
+best_models_mae |>
+  count(model, name = "number_of_wins")
+
+# Inspect the winning model for each category and region
+best_models_mae |>
+  select(category, region, model, MAE) |>
+  arrange(category, region) |>
+  print(n = Inf)
+```
+
+```{r}
+#| label: seasonality-model-comparison
+
+seasonal_strength |>
+  select(
+    EFPG_name,
+    Metroregion_name,
+    seasonal_strength_year
+  ) |>
+  inner_join(
+    accuracy_export |>
+      group_by(category, region) |>
+      slice_min(MAE, n = 1, with_ties = FALSE) |>
+      ungroup(),
+    by = c(
+      "EFPG_name" = "category",
+      "Metroregion_name" = "region"
+    )
+  ) |>
+  filter(
+    EFPG_name ==
+      "Non-whole-grain flour, bread mixes, and frozen dough"
+  ) |>
+  transmute(
+    Region = sub(
+      "Census Region [1-4]: ",
+      "",
+      Metroregion_name
+    ),
+    Seasonal_Strength = round(seasonal_strength_year, 3),
+    Best_Model = model,
+    MAE = round(MAE, 4)
+  ) |>
+  arrange(Region)
 ```
 
 ```{r}
@@ -502,3 +635,7 @@ accuracy_export |>
 ```
 
 ## 7. Summary of Findings
+
+Forecasting performance was evaluated across 40 food category–region subseries using 2018 observations as the testing period. ARIMA achieved the lowest average RMSE (0.0166), MAE (0.0147), and MAPE (1.43%), indicating the strongest overall forecasting accuracy among the three methods evaluated. However, ARIMA produced the lowest RMSE for only 16 of the 40 subseries, compared with 13 for SNAIVE and 11 for ETS. These findings suggest that forecasting performance varies across food categories and regions, and no single method consistently outperforms the alternatives.
+
+STL decomposition also revealed differences in seasonal strength across the subseries, with particularly strong annual seasonality in shelf-stable, ready-to-heat foods and soups. Although seasonal strength provides useful context for understanding the underlying price-index patterns, additional analysis would be necessary to establish whether it is associated with differences in forecasting accuracy. The findings are limited to the 2018 testing period and the 40 subseries analyzed.
